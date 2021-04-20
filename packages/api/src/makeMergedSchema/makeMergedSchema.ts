@@ -1,10 +1,10 @@
 import { mergeTypeDefs } from '@graphql-tools/merge'
 import {
-  addResolveFunctionsToSchema,
+  addResolversToSchema,
   makeExecutableSchema,
-  IResolvers,
   IExecutableSchemaDefinition,
-} from 'apollo-server-lambda'
+} from '@graphql-tools/schema'
+import { IResolvers } from '@graphql-tools/utils'
 import type { GraphQLSchema, GraphQLFieldMap } from 'graphql'
 import merge from 'lodash.merge'
 import omitBy from 'lodash.omitby'
@@ -217,7 +217,7 @@ export const makeMergedSchema = ({
 
   const { resolverValidationOptions, inheritResolversFromInterfaces } =
     schemaOptions || {}
-  addResolveFunctionsToSchema({
+  addResolversToSchema({
     schema,
     resolvers,
     resolverValidationOptions,
