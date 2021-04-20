@@ -1,6 +1,8 @@
 /* eslint-disable react-hooks/rules-of-hooks */
 import { useApolloTracing } from '@envelop/apollo-tracing'
 import { envelop, useErrorHandler, useSchema, Plugin } from '@envelop/core'
+import { useParserCache } from '@envelop/parser-cache'
+import { useValidationCache } from '@envelop/validation-cache'
 import type {
   APIGatewayProxyEvent,
   Context as LambdaContext,
@@ -54,6 +56,11 @@ interface GraphQLHandlerOptions {
    */
   schema: GraphQLSchema
 
+  /**
+   * Custom Envelop plugins
+   */
+  extraPlugins?: Plugin<any>[]
+
   // TODO: Support this of course
   // cors?: CreateHandlerOptions['cors']
   // onHealthCheck?: CreateHandlerOptions['onHealthCheck']
@@ -87,7 +94,7 @@ function redwoodErrorHandler(errors: Readonly<GraphQLError[]>) {
  * Envelop plugin for injecting the current user into the GraphQL Context,
  * based on custom getCurrentUser function.
  */
-const useAuthContext = (
+const useRedwoodAuthContext = (
   getCurrentUser: GraphQLHandlerOptions['getCurrentUser']
 ): Plugin<RedwoodGraphQLContext> => {
   return {
@@ -154,15 +161,22 @@ export const createGraphQLHandler = ({
   context,
   getCurrentUser,
   onException,
+  extraPlugins,
 }: // TODO: Handle CORS and health check endpoints, should be easy enough
 // cors,
 // onHealthCheck,
 GraphQLHandlerOptions) => {
   const plugins: Plugin<any>[] = [
+    useParserCache(),
+    useValidationCache(),
     useSchema(schema),
-    useAuthContext(getCurrentUser),
+    useRedwoodAuthContext(getCurrentUser),
     useRedwoodGlobalContextSetter(),
   ]
+
+  if (extraPlugins && extraPlugins.length > 0) {
+    plugins.push(...extraPlugins)
+  }
 
   if (context) {
     plugins.push(useUserContext(context))
