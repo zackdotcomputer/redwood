@@ -1,13 +1,11 @@
-import { APIGatewayProxyEventV1OrV2 } from 'apollo-server-lambda/dist/ApolloServer'
+import { APIGatewayProxyEvent } from 'aws-lambda'
 import { Request } from 'graphql-helix'
 
 import { CorsContext } from './cors'
 
 const HEALTH_CHECK_PATH = '/.well-known/apollo/server-health'
 
-export type OnHealthcheckFn = (
-  event: APIGatewayProxyEventV1OrV2
-) => Promise<any>
+export type OnHealthcheckFn = (event: APIGatewayProxyEvent) => Promise<any>
 
 export function createHealthcheckContext(
   onHealthcheckFn?: OnHealthcheckFn,
@@ -17,10 +15,7 @@ export function createHealthcheckContext(
     isHealthcheckRequest(requestPath: string) {
       return requestPath.endsWith(HEALTH_CHECK_PATH)
     },
-    async handleHealthCheck(
-      request: Request,
-      event: APIGatewayProxyEventV1OrV2
-    ) {
+    async handleHealthCheck(request: Request, event: APIGatewayProxyEvent) {
       const corsHeaders = corsContext
         ? corsContext.getRequestHeaders(request)
         : {}
