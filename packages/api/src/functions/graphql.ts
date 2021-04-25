@@ -13,15 +13,23 @@ import {
   GraphQLSchema,
   NoSchemaIntrospectionCustomRule,
 } from 'graphql'
-import { Request, getGraphQLParameters, processRequest } from 'graphql-helix'
+import {
+  Request,
+  getGraphQLParameters,
+  processRequest,
+  shouldRenderGraphiQL,
+} from 'graphql-helix'
+import { renderPlaygroundPage } from 'graphql-playground-html'
 
 import type { AuthContextPayload } from 'src/auth'
 import { getAuthenticationContext } from 'src/auth'
+import { CorsConfig, createCorsContext } from 'src/cors'
 import {
   getPerRequestContext,
   setContext,
   usePerRequestContext,
 } from 'src/globalContext'
+import { createHealthcheckContext, OnHealthcheckFn } from 'src/healthcheck'
 
 export type GetCurrentUser = (
   decoded: AuthContextPayload[0],
@@ -61,9 +69,9 @@ interface GraphQLHandlerOptions {
    */
   extraPlugins?: Plugin<any>[]
 
-  // TODO: Support this of course
-  // cors?: CreateHandlerOptions['cors']
-  // onHealthCheck?: CreateHandlerOptions['onHealthCheck']
+  cors?: CorsConfig
+
+  onHealthCheck?: OnHealthcheckFn
 }
 
 function normalizeRequest(event: APIGatewayProxyEvent): Request {
@@ -162,10 +170,9 @@ export const createGraphQLHandler = ({
   getCurrentUser,
   onException,
   extraPlugins,
-}: // TODO: Handle CORS and health check endpoints, should be easy enough
-// cors,
-// onHealthCheck,
-GraphQLHandlerOptions) => {
+  cors,
+  onHealthCheck,
+}: GraphQLHandlerOptions) => {
   const plugins: Plugin<any>[] = [
     useParserCache(),
     useValidationCache(),
@@ -188,18 +195,52 @@ GraphQLHandlerOptions) => {
     plugins.push(useErrorHandler(redwoodErrorHandler))
   }
 
-  const getEnvlopedFn = envelop({ plugins })
+  const corsContext = createCorsContext(cors)
+  const healthcheckContext = createHealthcheckContext(
+    onHealthCheck,
+    corsContext
+  )
+  const createSharedEnvelop = envelop({ plugins })
+  const enveloped = createSharedEnvelop()
 
   const handlerFn = async (
     event: APIGatewayProxyEvent,
     lambdaContext: LambdaContext
   ): Promise<APIGatewayProxyResult> => {
+    // In the future, this could be part of a specific handler for AWS lambdas
     lambdaContext.callbackWaitsForEmptyEventLoop = false
 
     // In the future, the normalizeRequest can take more flexible params, maybe evne cloud provider name
     // and return a normalized request structure.
     const request = normalizeRequest(event)
-    const enveloped = getEnvlopedFn()
+
+    if (healthcheckContext.isHealthcheckRequest(event.path)) {
+      return healthcheckContext.handleHealthCheck(request, event)
+    }
+
+    const corsHeaders = cors ? corsContext.getRequestHeaders(request) : {}
+
+    if (corsContext.shouldHandleCors(request)) {
+      return {
+        body: '',
+        statusCode: 200,
+        headers: corsHeaders,
+      }
+    }
+
+    if (shouldRenderGraphiQL(request)) {
+      return {
+        body: renderPlaygroundPage({
+          endpoint: '/graphql',
+        }),
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'text/html',
+          ...corsHeaders,
+        },
+      }
+    }
+
     const { operationName, query, variables } = getGraphQLParameters(request)
 
     try {
@@ -220,10 +261,13 @@ GraphQLHandlerOptions) => {
         return {
           body: JSON.stringify(result.payload),
           statusCode: 200,
-          headers: (result.headers || {}).reduce(
-            (prev, header) => ({ ...prev, [header.name]: header.value }),
-            {}
-          ),
+          headers: {
+            ...(result.headers || {}).reduce(
+              (prev, header) => ({ ...prev, [header.name]: header.value }),
+              {}
+            ),
+            ...corsHeaders,
+          },
         }
       } else if (result.type === 'MULTIPART_RESPONSE') {
         return {
