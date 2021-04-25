@@ -20,6 +20,7 @@ import {
   shouldRenderGraphiQL,
 } from 'graphql-helix'
 import { renderPlaygroundPage } from 'graphql-playground-html'
+import { BaseLogger } from 'pino'
 
 import type { AuthContextPayload } from 'src/auth'
 import { getAuthenticationContext } from 'src/auth'
@@ -46,6 +47,10 @@ export type RedwoodGraphQLContext = {
 }
 
 interface GraphQLHandlerOptions {
+  /**
+   * Customize GraphQL Logger
+   */
+  logger: BaseLogger
   /**
    * Modify the resolver and global context.
    */
@@ -157,6 +162,44 @@ const useRedwoodGlobalContextSetter = (): Plugin<RedwoodGraphQLContext> => ({
   },
 })
 
+const useRedwoodLogger = (
+  baseLogger: BaseLogger
+): Plugin<RedwoodGraphQLContext> => {
+  const childLogger = baseLogger.child({ name: 'GraphQL ' })
+
+  return {
+    onExecute({ args }) {
+      childLogger.info(
+        {
+          operationName: args.operationName,
+        },
+        `GraphQL execution started`
+      )
+
+      return {
+        onExecuteDone({ result }) {
+          if (result.errors && result.errors.length > 0) {
+            childLogger.error(
+              {
+                operationName: args.operationName,
+                errors: result.errors,
+              },
+              `GraphQL execution completed with errors:`
+            )
+          } else {
+            childLogger.info(
+              {
+                operationName: args.operationName,
+              },
+              `GraphQL execution completed`
+            )
+          }
+        },
+      }
+    },
+  }
+}
+
 /**
  * Creates an Apollo GraphQL Server.
  *
@@ -165,6 +208,7 @@ const useRedwoodGlobalContextSetter = (): Plugin<RedwoodGraphQLContext> => ({
  * ```
  */
 export const createGraphQLHandler = ({
+  logger,
   schema,
   context,
   getCurrentUser,
@@ -179,6 +223,7 @@ export const createGraphQLHandler = ({
     useSchema(schema),
     useRedwoodAuthContext(getCurrentUser),
     useRedwoodGlobalContextSetter(),
+    useRedwoodLogger(logger),
   ]
 
   if (extraPlugins && extraPlugins.length > 0) {
