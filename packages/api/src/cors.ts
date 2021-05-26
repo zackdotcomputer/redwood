@@ -1,4 +1,5 @@
 import { Request } from 'graphql-helix'
+import { Headers } from 'node-fetch'
 
 export type CorsConfig = {
   origin?: boolean | string | string[]
@@ -13,7 +14,8 @@ export type CorsHeaders = Record<string, string>
 export type CorsContext = ReturnType<typeof createCorsContext>
 
 export function createCorsContext(cors: CorsConfig | undefined) {
-  // Taken from apollo-server-lambda
+  // Taken from apollo-server-env
+  // @see: https://github.com/apollographql/apollo-server/blob/9267a79b974e397e87ad9ee408b65c46751e4565/packages/apollo-server-env/src/polyfills/fetch.js#L1
   const corsHeaders = new Headers()
 
   if (cors) {
