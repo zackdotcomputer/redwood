@@ -84,7 +84,7 @@ function normalizeRequest(event: APIGatewayProxyEvent): Request {
     headers: event.headers || {},
     method: event.httpMethod,
     query: event.queryStringParameters,
-    body: event.body,
+    body: event.body && JSON.parse(event.body),
   }
 }
 
@@ -217,6 +217,7 @@ export const createGraphQLHandler = ({
   cors,
   onHealthCheck,
 }: GraphQLHandlerOptions) => {
+  logger.debug('>> GraphQLHandlerOptions')
   const plugins: Plugin<any>[] = [
     useParserCache(),
     useValidationCache(),
@@ -288,7 +289,14 @@ export const createGraphQLHandler = ({
 
     const { operationName, query, variables } = getGraphQLParameters(request)
 
+    logger.debug(
+      { requestBody: request.body, operationName, query, variables },
+      'getGraphQLParameters'
+    )
+
     try {
+      logger.debug('About to processRequest')
+
       const result = await processRequest({
         operationName,
         query,
@@ -333,6 +341,7 @@ export const createGraphQLHandler = ({
         statusCode: 500,
       }
     } catch (e) {
+      logger.error(e)
       onException && onException()
 
       return {
